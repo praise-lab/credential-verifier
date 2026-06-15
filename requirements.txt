@@ -1,0 +1,8 @@
+streamlit
+opencv-python-headless
+pyzbar
+pytesseract
+pillow
+qrcode
+pandas
+pyjwt
