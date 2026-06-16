@@ -1,9 +1,8 @@
-import cv2
-import numpy as np
 
-def read_qr(image_file):
-    file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+import cv2
+
+def read_qr(file_path):
+    img = cv2.imread(file_path)
 
     detector = cv2.QRCodeDetector()
     data, bbox, _ = detector.detectAndDecode(img)
