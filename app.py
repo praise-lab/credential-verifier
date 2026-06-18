@@ -1,95 +1,75 @@
 import streamlit as st
-import pandas as pd
 import tempfile
-from qr_scanner import read_qr
-from PIL import Image
 import pytesseract
-import os
 
-# ----------------------------
-# FIX: Tesseract configuration (Windows)
-# ----------------------------
-tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-if os.path.exists(tesseract_path):
-    pytesseract.pytesseract.tesseract_cmd = tesseract_path
-else:
-    st.error("❌ Tesseract not found. Check installation path.")
+from database import init_db, verify_certificate
+from qr_scanner import read_qr
+from ocr_utils import run_ocr, extract_cert_id
 
-# ----------------------------
-# Load registry
-# ----------------------------
-@st.cache_data
-def load_registry():
-    return pd.read_csv("registry.csv")
+init_db()
 
-registry = load_registry()
+st.title("📜 Hybrid Certificate Verification System")
 
-# ----------------------------
-# OCR function
-# ----------------------------
-def extract_text(image_file):
-    image = Image.open(image_file)
-    return pytesseract.image_to_string(image)
+uploaded_file = st.file_uploader("Upload Certificate", type=["png", "jpg", "jpeg"])
 
-# ----------------------------
-# UI
-# ----------------------------
-st.title("📜 Credential Verification System")
+if uploaded_file:
 
-uploaded_file = st.file_uploader(
-    "Upload Certificate",
-    type=["png", "jpg", "jpeg"]
-)
-
-if uploaded_file is not None:
+    # Save file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+        tmp.write(uploaded_file.getbuffer())
+        temp_path = tmp.name
 
     st.image(uploaded_file, caption="Uploaded Certificate", use_container_width=True)
 
-    # ----------------------------
-    # STEP 1: QR SCAN
-    # ----------------------------
-    st.write("## Step 1: QR Scan")
+    cert_id = None
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp:
-        temp.write(uploaded_file.getvalue())
-        temp_path = temp.name
+    # -------------------------
+    # STEP 1: TRY QR CODE
+    # -------------------------
+    st.subheader("🔍 Step 1: QR Scan")
 
-    try:
-        cert_id = read_qr(temp_path)
-        st.success(f"QR Code Extracted: {cert_id}")
-    except Exception as e:
-        st.error(f"QR Scan Failed: {e}")
-        cert_id = None
+    cert_id = read_qr(temp_path)
 
-    # ----------------------------
-    # STEP 2: OCR
-    # ----------------------------
-    st.write("## Step 2: OCR Text Extraction")
-
-    try:
-        extracted_text = extract_text(uploaded_file)
-        st.text(extracted_text)
-    except Exception as e:
-        st.error(f"OCR Failed: {e}")
-
-    # ----------------------------
-    # STEP 3: VERIFICATION
-    # ----------------------------
-    st.write("## Step 3: Verification Result")
-
-    if cert_id is not None:
-
-        match = registry[registry["hash"] == cert_id]
-
-        if not match.empty:
-            st.success("✅ Certificate is AUTHENTIC")
-            st.dataframe(match)
-        else:
-            st.error("❌ Certificate NOT found in registry")
-
+    if cert_id:
+        st.success(f"QR Found: {cert_id}")
     else:
-        st.warning("⚠️ QR code could not be read")
+        st.warning("No QR detected. Moving to OCR...")
+
+        # -------------------------
+        # STEP 2: OCR FALLBACK
+        # -------------------------
+        st.subheader("🧠 Step 2: OCR Extraction")
+
+        text = run_ocr(temp_path)
+        st.text_area("Extracted Text", text, height=200)
+
+        cert_id = extract_cert_id(text)
+
+        if cert_id:
+            st.success(f"Certificate ID extracted: {cert_id}")
+        else:
+            st.error("No Certificate ID found in text")
+
+    # -------------------------
+    # STEP 3: DATABASE CHECK
+    # -------------------------
+    if cert_id:
+        st.subheader("📊 Verification Result")
+
+        record = verify_certificate(cert_id)
+
+        if record:
+            st.success("Certificate is AUTHENTIC ✅")
+            st.json({
+                "Certificate ID": record[0],
+                "Name": record[1],
+                "Course": record[2],
+                "Date Issued": record[3]
+            })
+        else:
+            st.error("Certificate NOT FOUND ❌")
 
 
 
