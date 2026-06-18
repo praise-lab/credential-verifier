@@ -1,8 +1,31 @@
 import streamlit as st
 import tempfile
 import pytesseract
+import os
+import shutil
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# -------------------------
+# TESSERACT AUTO DETECTION (WORKS LOCAL + CLOUD)
+# -------------------------
+tesseract_path = shutil.which("tesseract")
+
+if not tesseract_path:
+    possible_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        "/usr/bin/tesseract",
+        "/usr/local/bin/tesseract"
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            tesseract_path = path
+            break
+
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+else:
+    st.error("❌ Tesseract not found. OCR will not work.")
 
 from database import init_db, verify_certificate
 from qr_scanner import read_qr
